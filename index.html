@@ -203,6 +203,23 @@
 
   .footnote{font-size:13px;color:var(--muted);margin-top:18px}
 
+  /* Suggest word pairs */
+  .suggest .intro{color:var(--muted);font-size:14px;margin:6px 0 12px}
+  .suggest .row{display:grid;grid-template-columns:1fr 1fr 40px;gap:8px;align-items:center;margin-top:8px}
+  .suggest input{
+    width:100%;font:inherit;font-size:16px;padding:12px;border-radius:12px;border:0;
+    background:var(--surface-2);color:var(--text);
+  }
+  .suggest input::placeholder{color:var(--muted)}
+  .suggest .name-in{display:block;margin-top:12px}
+  .row-x{
+    width:40px;height:40px;border-radius:50%;border:0;cursor:pointer;
+    background:var(--surface-2);color:var(--muted);font:inherit;font-size:22px;line-height:1;
+  }
+  .row-x:active{background:var(--line)}
+  .suggest .add{margin-top:12px}
+  .suggest .submit{margin-top:14px}
+
   @media (prefers-reduced-motion: reduce){
     .card.flip{animation:none}
     *{transition:none!important}
@@ -272,6 +289,16 @@
           <li>Undercover and Mr. White win when they equal or outnumber the civilians left.</li>
           <li>If Mr. White is voted out, they get one guess at the civilians' word. Guess right and Mr. White wins alone.</li>
         </ul>
+      </details>
+
+      <details class="suggest">
+        <summary>Suggest word pairs</summary>
+        <p class="intro">Know good pairs? Add one or more below and submit — it opens a prefilled GitHub issue for review. You'll need a GitHub account.</p>
+        <div id="suggest-rows"></div>
+        <button type="button" class="btn ghost sm add" id="btn-add-pair">+ Add another pair</button>
+        <input class="name-in" id="suggest-name" type="text" maxlength="30" autocomplete="off" placeholder="Your name (optional)">
+        <div class="warn" id="suggest-warn"></div>
+        <button type="button" class="btn sm submit" id="btn-suggest">Open a GitHub issue with these pairs</button>
       </details>
 
       <div class="actions">
@@ -678,6 +705,58 @@ function mkBtn(label, cls, fn) {
   b.addEventListener('click', fn); return b;
 }
 function esc(s) { return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+/* ---------- suggest word pairs ---------- */
+const SUGGEST_REPO = 'meetbs/undercover';
+const suggestRows = $('suggest-rows');
+function addSuggestRow() {
+  const row = document.createElement('div');
+  row.className = 'row';
+  const civ = document.createElement('input');
+  civ.type = 'text'; civ.maxLength = 40; civ.autocomplete = 'off'; civ.placeholder = 'Civilian word';
+  const uc = document.createElement('input');
+  uc.type = 'text'; uc.maxLength = 40; uc.autocomplete = 'off'; uc.placeholder = 'Undercover word';
+  const x = document.createElement('button');
+  x.type = 'button'; x.className = 'row-x'; x.textContent = '×'; x.setAttribute('aria-label', 'Remove pair');
+  x.addEventListener('click', () => { row.remove(); if (!suggestRows.children.length) addSuggestRow(); });
+  row.append(civ, uc, x);
+  suggestRows.appendChild(row);
+}
+$('btn-add-pair').addEventListener('click', addSuggestRow);
+$('btn-suggest').addEventListener('click', () => {
+  const warnEl = $('suggest-warn');
+  const pairs = [];
+  for (const row of suggestRows.children) {
+    const [a, b] = row.querySelectorAll('input');
+    const civ = a.value.trim(), uc = b.value.trim();
+    if (!civ && !uc) continue;                 // ignore blank rows
+    if (!civ || !uc) { warnEl.textContent = 'Each pair needs both a civilian and an undercover word.'; return; }
+    if (civ.toLowerCase() === uc.toLowerCase()) { warnEl.textContent = 'A pair’s two words can’t be identical.'; return; }
+    pairs.push({ civilian: civ, undercover: uc });
+  }
+  if (!pairs.length) { warnEl.textContent = 'Add at least one word pair first.'; return; }
+
+  const lines = pairs.map(p =>
+    `{ "civilian": ${JSON.stringify(p.civilian)}, "undercover": ${JSON.stringify(p.undercover)} },`).join('\n');
+  const who = $('suggest-name').value.trim();
+  const title = pairs.length === 1
+    ? `Word pair: ${pairs[0].civilian} / ${pairs[0].undercover}`
+    : `${pairs.length} word pairs suggested`;
+  const body =
+    `Suggested word pair${pairs.length > 1 ? 's' : ''} for **Undercover** — paste into \`words.json\`:\n\n` +
+    '```json\n' + lines + '\n```\n\n' +
+    `— submitted via the in-app suggestion form${who ? ` by ${who}` : ''}`;
+
+  const url = `https://github.com/${SUGGEST_REPO}/issues/new?labels=word-pair`
+    + `&title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
+  if (url.length > 7500) {
+    warnEl.textContent = 'That’s a lot at once — please submit in two smaller batches.';
+    return;
+  }
+  warnEl.textContent = '';
+  window.open(url, '_blank', 'noopener');
+});
+addSuggestRow();
 
 loadWords().then(renderSetup);
 </script>
